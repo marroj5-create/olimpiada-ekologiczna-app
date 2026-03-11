@@ -1,0 +1,636 @@
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+
+// ============================
+// STARTOWE PYTANIA
+// ============================
+
+const sampleQuestions = [
+  {
+    id: 1,
+    category: "ekologia",
+    difficulty: 2,
+    year: 2021,
+    interval: 1,
+    lastSeen: null,
+    question:
+      "Który gaz jest główną przyczyną efektu cieplarnianego generowanego przez działalność człowieka?",
+    options: ["Metan", "Dwutlenek węgla", "Tlen", "Hel"],
+    answer: 1,
+    explanation:
+      "Największy wpływ na antropogeniczny efekt cieplarniany ma CO₂ emitowany podczas spalania paliw kopalnych."
+  },
+  {
+    id: 2,
+    category: "ochrona_przyrody",
+    difficulty: 1,
+    year: 2020,
+    interval: 1,
+    lastSeen: null,
+    question: "Która forma ochrony przyrody w Polsce obejmuje największy obszar?",
+    options: [
+      "Park narodowy",
+      "Rezerwat przyrody",
+      "Park krajobrazowy",
+      "Pomnik przyrody"
+    ],
+    answer: 2,
+    explanation:
+      "Parki krajobrazowe obejmują największe powierzchnie i pozwalają na zrównoważone użytkowanie środowiska."
+  }
+];
+
+const categories = [
+  "wszystkie",
+  "ekologia",
+  "ochrona_przyrody",
+  "hydrologia",
+  "gleby",
+  "energia",
+  "atmosfera",
+  "prawo"
+];
+
+// ============================
+// KOMPONENT
+// ============================
+
+export default function EcoOlympiadTrainer() {
+
+  // ============================
+  // LOGOWANIE
+  // ============================
+
+  const [user,setUser]=useState(null)
+  const [login,setLogin]=useState({username:"",password:""})
+
+  useEffect(()=>{
+    const saved=localStorage.getItem("eco_user")
+    if(saved) setUser(JSON.parse(saved))
+
+    const admin=localStorage.getItem("eco_admin")
+    if(!admin){
+      localStorage.setItem("eco_admin",JSON.stringify({username:"admin",password:"admin123"}))
+    }
+  },[])
+
+  function loginUser(){
+    const admin=JSON.parse(localStorage.getItem("eco_admin"))
+
+    if(login.username===admin.username && login.password===admin.password){
+      const u={username:"admin",role:"admin"}
+      setUser(u)
+      localStorage.setItem("eco_user",JSON.stringify(u))
+      return
+    }
+
+    const u={username:login.username,role:"user"}
+    setUser(u)
+    localStorage.setItem("eco_user",JSON.stringify(u))
+  }
+
+  function logout(){
+    setUser(null)
+    localStorage.removeItem("eco_user")
+  }
+
+  // ============================
+
+  const [mode, setMode] = useState("menu");
+  const [questions, setQuestions] = useState(sampleQuestions);
+
+  const [quizQuestions, setQuizQuestions] = useState([]);
+  const [current, setCurrent] = useState(0);
+  const [score, setScore] = useState(0);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [selected,setSelected]=useState(null)
+
+  const [timer, setTimer] = useState(null);
+
+  const [selectedCategory, setSelectedCategory] = useState("wszystkie");
+
+  const [stats, setStats] = useState({
+    correct: 0,
+    total: 0,
+    xp: 0,
+    streak: 0
+  });
+
+  const [mistakes, setMistakes] = useState([]);
+
+  const [weakCategories, setWeakCategories] = useState({});
+
+  const [newQuestion, setNewQuestion] = useState({
+    question: "",
+    a: "",
+    b: "",
+    c: "",
+    d: "",
+    correct: 0,
+    explanation: "",
+    category: "ekologia"
+  });
+
+  // ============================
+  // LOCAL STORAGE
+  // ============================
+
+  useEffect(() => {
+    const q = localStorage.getItem("eco_questions");
+    const s = localStorage.getItem("eco_stats");
+
+    if (q) setQuestions(JSON.parse(q));
+    if (s) setStats(JSON.parse(s));
+
+  }, []);
+
+  useEffect(() => {
+
+    localStorage.setItem("eco_questions", JSON.stringify(questions));
+    localStorage.setItem("eco_stats", JSON.stringify(stats));
+
+  }, [questions, stats]);
+
+  // ============================
+
+  function shuffle(arr) {
+    return [...arr].sort(() => Math.random() - 0.5);
+  }
+
+  // ============================
+  // QUIZ START
+  // ============================
+
+  function startLearning() {
+
+    let pool=[...questions]
+
+    if (selectedCategory !== "wszystkie")
+      pool = pool.filter((q) => q.category === selectedCategory);
+
+    const set = shuffle(pool).slice(0, 20);
+
+    setQuizQuestions(set);
+    setCurrent(0);
+    setScore(0);
+    setShowAnswer(false);
+    setSelected(null)
+
+    setMode("quiz");
+  }
+
+  function startExam() {
+
+    let pool=[...questions]
+
+    if (selectedCategory !== "wszystkie")
+      pool = pool.filter((q) => q.category === selectedCategory);
+
+    const set = shuffle(pool).slice(0, 50);
+
+    setQuizQuestions(set);
+
+    setCurrent(0);
+    setScore(0);
+    setTimer(3600);
+    setSelected(null)
+
+    setMode("exam");
+  }
+
+  // ============================
+  // TIMER
+  // ============================
+
+  useEffect(() => {
+
+    if (mode !== "exam" || timer === null) return;
+
+    const t = setInterval(() => {
+      setTimer((prev) => {
+        if (prev <= 1) {
+          setMode("result");
+          return 0;
+        }
+
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(t);
+
+  }, [mode, timer]);
+
+  // ============================
+  // ODPOWIEDŹ
+  // ============================
+
+  function chooseOption(i) {
+
+    if(showAnswer) return
+
+    setSelected(i)
+
+    const q = quizQuestions[current];
+
+    const correct = i === q.answer;
+
+    if (correct) {
+      setScore((s) => s + 1);
+
+      setStats((p) => ({
+        ...p,
+        correct: p.correct + 1,
+        total: p.total + 1,
+        xp: p.xp + 10
+      }));
+
+    } else {
+
+      setStats((p) => ({ ...p, total: p.total + 1 }));
+
+      setWeakCategories((prev) => ({
+        ...prev,
+        [q.category]: (prev[q.category] || 0) + 1
+      }));
+
+    }
+
+    setShowAnswer(true);
+  }
+
+  function nextQuestion() {
+
+    setShowAnswer(false);
+    setSelected(null)
+
+    if (current + 1 >= quizQuestions.length) {
+      setMode("result");
+    } else {
+      setCurrent((c) => c + 1);
+    }
+
+  }
+
+  function exitQuiz() {
+    if (confirm("Wyjść z quizu?")) {
+      setMode("menu");
+      setQuizQuestions([]);
+    }
+  }
+
+  // ============================
+  // DODAWANIE PYTAŃ
+  // ============================
+
+  function addQuestion() {
+
+    if(user?.role!=="admin"){
+      alert("Tylko administrator może dodawać pytania")
+      return
+    }
+
+    if (!newQuestion.question) return;
+
+    const q = {
+      id: Date.now(),
+      category: newQuestion.category,
+      difficulty: 1,
+      year: new Date().getFullYear(),
+      interval: 1,
+      lastSeen: null,
+      question: newQuestion.question,
+      options: [newQuestion.a, newQuestion.b, newQuestion.c, newQuestion.d],
+      answer: Number(newQuestion.correct),
+      explanation: newQuestion.explanation
+    };
+
+    setQuestions((prev) => [...prev, q]);
+
+    setNewQuestion({
+      question: "",
+      a: "",
+      b: "",
+      c: "",
+      d: "",
+      correct: 0,
+      explanation: "",
+      category: "ekologia"
+    });
+
+    alert("Pytanie dodane!");
+  }
+
+  const level = Math.floor(stats.xp / 100) + 1;
+
+  const progress = quizQuestions.length
+    ? ((current + 1) / quizQuestions.length) * 100
+    : 0;
+
+  // ============================
+  // LOGIN SCREEN
+  // ============================
+
+  if(!user)
+  return(
+
+  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-300 to-blue-300">
+
+  <motion.div initial={{scale:0.8,opacity:0}} animate={{scale:1,opacity:1}}
+  className="bg-white p-10 rounded-2xl shadow-xl w-80 space-y-4">
+
+  <h1 className="text-2xl font-bold text-center">Olimpiada Ekologiczna App</h1>
+
+  <input
+  placeholder="Login"
+  className="border p-2 w-full"
+  value={login.username}
+  onChange={e=>setLogin({...login,username:e.target.value})}
+  />
+
+  <input
+  type="password"
+  placeholder="Hasło"
+  className="border p-2 w-full"
+  value={login.password}
+  onChange={e=>setLogin({...login,password:e.target.value})}
+  />
+
+  <button onClick={loginUser} className="btn">Zaloguj</button>
+
+  <p className="text-xs text-gray-500 text-center">demo admin: admin / admin123</p>
+
+  </motion.div>
+
+  </div>
+
+  )
+
+  // ============================
+  // MENU
+  // ============================
+
+  if (mode === "menu")
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-200 via-emerald-200 to-blue-200 p-10">
+        <motion.div
+          initial={{ opacity: 0, y: -30 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-3xl mx-auto text-center"
+        >
+          <h1 className="text-5xl font-bold mb-6">Olimpiada Ekologiczna App</h1>
+
+          <p className="mb-6 text-lg">{user.username} • Poziom {level} • {stats.xp} XP</p>
+
+          <div className="grid gap-4">
+            <button onClick={startLearning} className="btn">Tryb nauki</button>
+            <button onClick={startExam} className="btn bg-blue-500">Symulacja testu</button>
+            {user.role==="admin" && (
+            <button onClick={() => setMode("add")} className="btn bg-purple-500">Panel pytań</button>
+            )}
+            <button onClick={() => setMode("stats")} className="btn bg-gray-700">Statystyki</button>
+            <button onClick={logout} className="btn bg-red-500">Wyloguj</button>
+          </div>
+        </motion.div>
+      </div>
+    );
+
+  // ============================
+  // QUIZ
+  // ============================
+
+  if (mode === "quiz" || mode === "exam") {
+    const q = quizQuestions[current];
+
+    if (!q)
+      return <div className="p-10 text-center">Brak pytań</div>;
+
+    const minutes = timer !== null ? Math.floor(timer / 60) : 0;
+
+    const seconds = timer !== null ? String(timer % 60).padStart(2, "0") : "00";
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-100 to-blue-100 p-10">
+        <div className="max-w-2xl mx-auto">
+
+          <div className="flex justify-between mb-4">
+            <button onClick={exitQuiz} className="text-red-600">Wyjdź</button>
+
+            {mode === "exam" && (
+              <p>⏱ {minutes}:{seconds}</p>
+            )}
+          </div>
+
+          <div className="w-full bg-gray-200 rounded-full h-3 mb-6">
+            <div
+              className="bg-green-500 h-3 rounded-full"
+              style={{ width: progress + "%" }}
+            />
+          </div>
+
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={current}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -30 }}
+              className="bg-white p-6 rounded-xl shadow"
+            >
+              <h2 className="mb-4 font-bold">
+                Pytanie {current + 1}/{quizQuestions.length}
+              </h2>
+
+              <p className="mb-6">{q.question}</p>
+
+              <div className="space-y-3">
+                {q.options.map((opt, i) => {
+
+                  let color="border"
+
+                  if(showAnswer){
+                    if(i===q.answer) color="bg-green-200 border-green-600"
+                    else if(i===selected) color="bg-red-200 border-red-600"
+                  }
+
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => chooseOption(i)}
+                      className={`w-full p-3 rounded border ${color}`}
+                    >
+                      {opt}
+                    </button>
+                  )
+
+                })}
+              </div>
+
+              {showAnswer && (
+                <div className="mt-6">
+
+                  <p className="text-sm">{q.explanation}</p>
+
+                  <button
+                    onClick={nextQuestion}
+                    className="mt-4 btn"
+                  >
+                    Następne
+                  </button>
+                </div>
+              )}
+
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================
+  // WYNIK
+  // ============================
+
+  if (mode === "result")
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-200 to-blue-200">
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="bg-white p-10 rounded-xl shadow text-center"
+        >
+          <h1 className="text-3xl font-bold">Wynik</h1>
+
+          <p className="text-2xl mt-4">
+            {score}/{quizQuestions.length}
+          </p>
+
+          <button
+            onClick={() => setMode("menu")}
+            className="mt-6 btn"
+          >
+            Menu
+          </button>
+        </motion.div>
+      </div>
+    );
+
+  // ============================
+  // PANEL PYTAŃ
+  // ============================
+
+  if (mode === "add")
+    return (
+      <div className="p-10 max-w-xl mx-auto space-y-3">
+        <h1 className="text-3xl font-bold">Panel pytań</h1>
+
+        <input
+          placeholder="Treść pytania"
+          className="border p-2 w-full"
+          value={newQuestion.question}
+          onChange={(e) =>
+            setNewQuestion({ ...newQuestion, question: e.target.value })
+          }
+        />
+
+        {[
+          "a",
+          "b",
+          "c",
+          "d"
+        ].map((l) => (
+          <input
+            key={l}
+            placeholder={`Odpowiedź ${l.toUpperCase()}`}
+            className="border p-2 w-full"
+            value={newQuestion[l]}
+            onChange={(e) =>
+              setNewQuestion({ ...newQuestion, [l]: e.target.value })
+            }
+          />
+        ))}
+
+        <textarea
+          placeholder="Wyjaśnienie"
+          className="border p-2 w-full"
+          value={newQuestion.explanation}
+          onChange={(e) =>
+            setNewQuestion({ ...newQuestion, explanation: e.target.value })
+          }
+        />
+
+        <button onClick={addQuestion} className="btn">Dodaj pytanie</button>
+
+        <button onClick={() => setMode("menu")} className="btn bg-gray-500">
+          Powrót
+        </button>
+      </div>
+    );
+
+  // ============================
+  // STATYSTYKI
+  // ============================
+
+  if (mode === "stats")
+    return (
+      <div className="p-10 max-w-xl mx-auto">
+        <h1 className="text-3xl font-bold mb-6">Statystyki</h1>
+
+        <p>Odpowiedzi: {stats.total}</p>
+        <p>Poprawne: {stats.correct}</p>
+
+        <p>
+          Skuteczność:{" "}
+          {stats.total
+            ? Math.round((stats.correct / stats.total) * 100)
+            : 0}
+          %
+        </p>
+
+        <p className="mt-4">XP: {stats.xp}</p>
+
+        <h2 className="mt-6 font-bold">Słabe działy</h2>
+
+        {Object.entries(weakCategories).map(([k, v]) => (
+          <p key={k}>
+            {k}: {v} błędów
+          </p>
+        ))}
+
+        <button
+          onClick={() => setMode("menu")}
+          className="mt-6 btn"
+        >
+          Powrót
+        </button>
+      </div>
+    );
+}
+
+// ============================
+// STYLE
+// ============================
+
+const style = document.createElement("style");
+style.innerHTML = `
+
+body{
+font-family:system-ui;
+}
+
+.btn{
+background:#16a34a;
+color:white;
+padding:12px;
+border-radius:10px;
+transition:0.2s;
+width:100%;
+}
+
+.btn:hover{
+transform:scale(1.05);
+opacity:0.9;
+}
+
+`;
+
+document.head.appendChild(style);
